@@ -1,0 +1,9 @@
+FROM docker.elastic.co/logstash/logstash:7.17.22
+
+COPY logstash.conf /usr/share/logstash/pipeline/logstash.conf
+
+USER root
+RUN chown root:logstash /usr/share/logstash/pipeline/logstash.conf && \
+    chmod go-w /usr/share/logstash/pipeline/logstash.conf
+
+USER logstash

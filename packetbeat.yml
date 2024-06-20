@@ -1,0 +1,22 @@
+packetbeat.interfaces.device: any
+
+packetbeat.flows:
+  enabled: false
+  timeout: 30s
+  period: 10s
+
+packetbeat.protocols:
+  - type: http
+    ports: [80, 8080, 8000, 5000, 8002]
+
+setup.kibana:
+  host: "http://kibana:5601"
+
+setup.dashboards.enabled: true
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+
+processors:
+  - add_host_metadata: ~
+  - add_cloud_metadata: ~

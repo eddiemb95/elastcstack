@@ -1,0 +1,176 @@
+version: '3.8'
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.22
+    container_name: elasticsearch
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+    networks:
+      - elastic
+    healthcheck:
+      interval: 20s
+      retries: 10
+      test: curl -s http://localhost:9200/_cluster/health | grep -vq '"status":"red"'
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.22
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+       - elastic
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  apm-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.apm
+    container_name: apm-server
+    ports:
+      - "8200:8200"
+    environment:
+      - strict.perms=false
+      - setup.kibana.host=kibana:5601
+      - output.elasticsearch.hosts=["http://elasticsearch:9200"]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      kibana:
+        condition: service_healthy
+    networks:
+      - elastic
+  
+  metricbeat:
+    build:
+      context: .
+      dockerfile: Dockerfile.metricbeat
+    container_name: metricbeat
+    user: root
+    networks:
+      - elastic
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /sys/fs/cgroup:/hostfs/sys/fs/cgroup:ro
+      - /proc:/hostfs/proc:ro
+      - /:/hostfs:ro
+    environment:
+      - strict.perms=false
+      - setup.kibana.host=kibana:5601
+      - output.elasticsearch.hosts=["http://elasticsearch:9200"]
+    depends_on:
+      kibana:
+        condition: service_healthy
+
+  packetbeat:
+    build:
+      context: .
+      dockerfile: Dockerfile.packetbeat
+    container_name: packetbeat
+    user: root
+    networks:
+      - elastic
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - strict.perms=false
+      - setup.kibana.host=kibana:5601
+      - output.elasticsearch.hosts=["http://elasticsearch:9200"]
+    depends_on:
+      kibana:
+        condition: service_healthy
+
+  logstash:
+    build:
+      context: .
+      dockerfile: Dockerfile.logstash
+    container_name: logstash
+    user: root
+    networks:
+      - elastic
+    ports:
+      - "5044:5044"
+    depends_on:
+      kibana:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9600/_node/stats || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  filebeat:
+    build:
+      context: .
+      dockerfile: Dockerfile.filebeat
+    container_name: filebeat
+    networks:
+      - elastic
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    environment:
+      - strict.perms=false
+      - setup.kibana.host=kibana:5601
+      - output.elasticsearch.hosts=["http://elasticsearch:9200"]
+    depends_on:
+      kibana:
+        condition: service_healthy
+      logstash:
+        condition: service_healthy
+
+  heartbeat:
+    build:
+      context: .
+      dockerfile: Dockerfile.heartbeat
+    container_name: heartbeat
+    networks:
+      - elastic
+    user: root
+    environment:
+      - setup.kibana.host=kibana:5601
+      - output.elasticsearch.hosts=["http://elasticsearch:9200"]
+    depends_on:
+      kibana:
+        condition: service_healthy
+
+  apollo_server:
+    build:
+      context: .
+      dockerfile: Dockerfile.apollo
+    container_name: apollo-server
+    networks:
+      - elastic
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - ELASTIC_APM_SERVER_URL=http://apm-server:8200
+      - ELASTIC_APM_SERVICE_NAME=your-apollo-server
+    depends_on:
+      - apm-server
+
+networks:
+  elastic:
+    driver: bridge
+
+#curl --request POST --header "Content-Type: application/json" --url http://localhost:4000 --data "{\"query\":\"query { books { title author } }\"}"

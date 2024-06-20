@@ -1,0 +1,11 @@
+FROM nikolaik/python-nodejs:python3.12-nodejs20-alpine
+
+WORKDIR /app
+
+COPY . .
+
+RUN npm install
+
+EXPOSE 4000
+
+CMD ["npm","start"]

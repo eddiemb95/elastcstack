@@ -1,0 +1,18 @@
+heartbeat.monitors:
+- type: http
+  id: apollo-server
+  name: Apollo Server
+  schedule: '@every 10s'
+  urls: ["http://apollo-server:4000"]
+  check.response:
+    status: 200
+
+setup.kibana:
+  host: "http://kibana:5601"
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+
+processors:
+  - add_host_metadata: ~
+  - add_cloud_metadata: ~
